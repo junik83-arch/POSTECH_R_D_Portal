@@ -94,7 +94,8 @@ PHONE = re.compile(r"(?<!\d)(?:\+82[-\s]?0?\d{1,2}[-.\s)]\s?|0\d{1,2}(?:\)\s?|[-
 
 # 첫 화면이 비어 있을 때 따라가 볼 '다른 주소로 넘기기' 표시 (2026-08-28 크롤링에서 글자 없이 끝난 5곳 중 3곳이 이것)
 META_REFRESH = re.compile(r"""<meta[^>]+http-equiv=["']?refresh["']?[^>]*content=["']?\s*\d+\s*;\s*url=([^"'>\s]+)""", re.I)
-JS_REDIRECT = re.compile(r"""location\.(?:replace\(|href\s*=\s*)\s*["']([^"']+)["']""", re.I)
+# location.replace("…") · location.href = "…" · window.location = "…" (2026-10-07 'Redirecting…' 페이지에서 window.location 꼴을 놓쳤다)
+JS_REDIRECT = re.compile(r"""location(?:\.replace\(|(?:\.href)?\s*=\s*)\s*["']([^"']+)["']""", re.I)
 
 SKIP_EXTENSIONS = {
     ".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".hwp", ".hwpx",
@@ -221,10 +222,13 @@ def fetch_page(url: str, timeout: float, insecure: bool) -> dict:
     html, content_url, status = _decode(resp), url, resp.status_code
     title, text = extract_text(html)
 
-    if not text:
-        # 글자가 없으면 ① 다른 주소로 넘기는 페이지인지(meta refresh · location.replace — 2026-10-07 추가) ② frameset 인지 본다.
-        # 넘기는 주소는 한 번만 따라간다(서로 넘기는 고리에 빠지지 않게).
-        frame_url = redirect_target(html, resp.url) or first_frame_src(html, url)
+    if len(text) < 100:
+        # 글자가 (거의) 없으면 ① 다른 주소로 넘기는 페이지인지(meta refresh · location.replace — 2026-10-07 추가. 'Redirecting…'
+        # 처럼 몇 글자 있는 넘기기 페이지도) ② 글자가 아예 없을 때 frameset 인지 본다. 넘기는 주소는 한 번만 따라간다.
+        frame = first_frame_src(html, url)
+        if frame and text and _site(urlparse(frame).netloc) != _site(urlparse(url).netloc):
+            frame = None  # 몇 글자라도 있는 페이지는 같은 사이트 프레임만 따라간다(네이버 블로그 본문 프레임 O, 유튜브 삽입 X)
+        frame_url = redirect_target(html, resp.url) or frame
         if frame_url:
             frame_resp = requests.get(frame_url, headers=HEADERS, timeout=timeout, verify=not insecure)
             frame_resp.raise_for_status()

@@ -64,7 +64,7 @@ SYSTEM_INSTRUCTION_TEMPLATE = """당신은 대학교 R&D전략팀을 위해 교�
 규칙:
 1. 요약 대상은 오직 "{name}" 교수 1인입니다. 원문에 다른 사람 이름(동료 교수, 학생, 공동연구자 등)이 등장하더라도, 그 사람의 성과나 소식을 "{name}" 교수의 것으로 섞어 쓰지 마세요.
 2. 원문에 명시되지 않은 사실을 지어내지 마세요.
-3. "{name}" 교수 본인에 대한 내용을 명확히 찾을 수 없으면, 다른 내용을 채우지 말고 정확히 이렇게만 답하세요: \"""" + build_wiki.HOMEPAGE_SUMMARY_NOT_FOUND + """\"
+3. 원문이 "{name}" 교수 본인이나 그가 이끄는 연구실에 대한 내용인지 확인할 수 없으면(예: 학과 대표 페이지 · 만료된 사이트 · 다른 사람의 페이지), 다른 내용을 채우지 말고 정확히 이렇게만 답하세요: \"""" + build_wiki.HOMEPAGE_SUMMARY_NOT_FOUND + """\"
 4. 한국어로, 3~5문장(전체 700자 이내), 마크다운 서식(굵게·목록·제목 등) 없이 평문으로 작성하세요.
 5. 연구 초점, 대표 성과나 프로젝트, 소속/직함처럼 사실 확인이 되는 내용 위주로 쓰세요.
 6. 이메일 · 전화번호 · 연구실 호수 같은 연락처는 쓰지 마세요(원문에서는 [이메일] · [전화]로 지워져 있을 수 있습니다)."""
@@ -197,6 +197,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=None, help="처리할 최대 교원 수 (테스트용)")
     ap.add_argument("--force", action="store_true", help="원문이 안 바뀌었어도 전부 다시 요약")
+    ap.add_argument("--retry-not-found", action="store_true",
+                    help="'본인 정보를 찾지 못함'으로 답한 교원은 원문이 그대로여도 다시 요약(지시문을 고친 뒤)")
     args = ap.parse_args()
 
     use = llm_client.provider()  # postech(로컬 .env 에 POSTECH 키) 또는 gemini(GitHub Actions)
@@ -238,13 +240,20 @@ def main() -> None:
         if not input_text:
             continue
         h = content_hash(input_text)
-        if not args.force and entry.get("summary") and entry.get("summary_source_hash") == h:
+        not_found = (entry.get("summary") or "").strip() == build_wiki.HOMEPAGE_SUMMARY_NOT_FOUND
+        if (not args.force and entry.get("summary") and entry.get("summary_source_hash") == h
+                and not (args.retry_not_found and not_found)):
             skipped += 1
             continue
 
         print(f"[{i}/{len(targets)}] {name} ({url})")
         system_instruction = SYSTEM_INSTRUCTION_TEMPLATE.format(name=name)
-        user_text = f"다음은 {name} 교수 개인 홈페이지에서 크롤링한 원문입니다.\n\n{input_text}"
+        # 2026-10-07: 영문 연구실 사이트에서 한글 이름을 찾지 못해 '본인 정보 없음'으로 답한 교원이 11명 있었다 — 이 주소가
+        # 실적 DB 에 본인 홈페이지로 등록돼 있다는 사실과, 로마자 이름 · 연구실 책임 교수로 나올 수 있다는 점을 알려 준다.
+        dept = (rec.get("학과") or "").strip() if rec else ""
+        user_text = (f"다음은 {name} 교수{f'({dept})' if dept else ''}의 홈페이지에서 크롤링한 원문입니다. 이 주소는 POSTECH 실적 "
+                     f"데이터베이스에 {name} 교수 본인의 홈페이지로 등록되어 있습니다. 영문 사이트에서는 이름이 로마자로, 연구실 "
+                     f"사이트에서는 연구실 책임 교수(PI · Professor)로 나올 수 있습니다.\n\n{input_text}")
         try:
             if postech:
                 # 원문이 많으면 Claude 가 길게 써 1,000토큰에서 잘린 적이 있다(2026-10-07, 28명) — 길이 규칙 + 넉넉한 상한
