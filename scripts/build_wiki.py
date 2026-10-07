@@ -183,6 +183,13 @@ def render_list_or_text(text: str) -> str:
     return text
 
 
+def clip_note(item: dict) -> list[str]:
+    """크롤러가 상한에서 자른 글이면 '원문 N자 중 앞 M자만' 줄 (2026-10-07 — crawl_homepages.py 의 chars_total · truncated)."""
+    if not item.get("truncated"):
+        return []
+    return [f"_원문 {item.get('chars_total', 0):,}자 중 앞 {len(item.get('text', '').strip()):,}자만 저장했습니다 (크롤러 저장 상한)._"]
+
+
 def render_details(summary: str, body: str) -> list[str]:
     """접이식 블록. 크롤링한 홈페이지 원문처럼 길고 스캔하기 어려운 텍스트를
     기본은 접어두고, 필요하면 펼쳐볼 수 있게 한다."""
@@ -323,11 +330,20 @@ def render_faculty_page(rec: dict, crawl: dict, fallback: dict) -> str:
             )
             lines.append("")
 
+        if crawled.get("error"):
+            # 다시 받기에 실패해 예전 글을 그대로 둔 경우(crawl_homepages.py 2026-10-07) — 언제 글인지 위 크롤링 시각이 알려 준다
+            lines.append(
+                f"_{crawled.get('last_attempt_at', '최근')} 다시 받기에 실패해({crawled['error'][:120]}) "
+                f"위 크롤링 시각의 내용을 보여 줍니다._"
+            )
+            lines.append("")
+
         main_text = crawled["text"].strip()
         if len(main_text) > 300:
             lines.extend(render_details("홈페이지 원문 보기", main_text))
         else:
             lines.append(main_text)
+        lines.extend(clip_note(crawled))
         lines.append("")
 
         subpages = {u: s for u, s in (crawled.get("subpages") or {}).items() if s.get("text")}
@@ -344,6 +360,7 @@ def render_faculty_page(rec: dict, crawl: dict, fallback: dict) -> str:
                     lines.extend(render_details("내용 보기", sub_text))
                 else:
                     lines.append(sub_text)
+                lines.extend(clip_note(sub))
                 lines.append("")
     elif not homepage:
         lines.append("_등록된 홈페이지가 없어 크롤링 대상이 아닙니다._")

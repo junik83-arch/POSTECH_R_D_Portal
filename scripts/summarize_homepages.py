@@ -17,6 +17,9 @@ Google Gemini API로 교원 1인당 3~5문장으로 요약해 각 엔트리에 "
 환경변수:
     GEMINI_API_KEY   Google AI Studio에서 발급한 API 키
                       (https://aistudio.google.com/app/apikey)
+    SUMMARY_PROVIDER · POSTECH_API_KEY · POSTECH_API_BASE
+                      (2026-10-07) 로컬에서는 POSTECH AI API(게이트웨이 Claude)로도 요약한다 — scripts/llm_client.py.
+                      .env 에 POSTECH 키가 있으면 postech, 없으면 예전처럼 Gemini(GitHub Actions 정기 갱신).
 
 사용법:
     python3 scripts/summarize_homepages.py            # 요약 없거나 원문이 바뀐 것만
@@ -42,6 +45,7 @@ except ImportError:
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_wiki  # noqa: E402 — HOMEPAGE_SUMMARY_NOT_FOUND 등 재사용
+import llm_client  # noqa: E402 — POSTECH AI API 호출(2026-10-07)
 
 ROOT = build_wiki.ROOT
 SOURCES_DIR = ROOT / "sources"
@@ -51,7 +55,9 @@ CRAWL_FILE = build_wiki.CRAWL_FILE
 API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 # 모델 목록 조회가 실패할 때 쓰는 고정 폴백 (index.html 과 동일한 후보 사상)
 FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-pro"]
-MAX_INPUT_CHARS = 16000  # 원문이 너무 길면 비용/프롬프트 크기를 위해 앞부분만 사용
+MAX_INPUT_CHARS = 16000  # 원문이 너무 길면 비용/프롬프트 크기를 위해 이만큼만 사용 — 칸마다 고르게 나눈다(build_input_text)
+# 요약에 넣는 순서: 첫 화면 → 연구·소개 탭 → 기타 → 논문·출판 탭(목록이 길어 다른 탭을 밀어내기 쉬워 마지막)
+PUBLICATION_HINTS = ("publication", "paper", "논문", "journal", "conference", "저서")
 
 SYSTEM_INSTRUCTION_TEMPLATE = """당신은 대학교 R&D전략팀을 위해 교원 홈페이지 크롤링 원문을 읽고 사실에 기반한 간결한 요약을 쓰는 도우미입니다.
 
@@ -59,8 +65,9 @@ SYSTEM_INSTRUCTION_TEMPLATE = """당신은 대학교 R&D전략팀을 위해 교�
 1. 요약 대상은 오직 "{name}" 교수 1인입니다. 원문에 다른 사람 이름(동료 교수, 학생, 공동연구자 등)이 등장하더라도, 그 사람의 성과나 소식을 "{name}" 교수의 것으로 섞어 쓰지 마세요.
 2. 원문에 명시되지 않은 사실을 지어내지 마세요.
 3. "{name}" 교수 본인에 대한 내용을 명확히 찾을 수 없으면, 다른 내용을 채우지 말고 정확히 이렇게만 답하세요: \"""" + build_wiki.HOMEPAGE_SUMMARY_NOT_FOUND + """\"
-4. 한국어로, 3~5문장, 마크다운 서식(굵게·목록·제목 등) 없이 평문으로 작성하세요.
-5. 연구 초점, 대표 성과나 프로젝트, 소속/직함처럼 사실 확인이 되는 내용 위주로 쓰세요."""
+4. 한국어로, 3~5문장(전체 700자 이내), 마크다운 서식(굵게·목록·제목 등) 없이 평문으로 작성하세요.
+5. 연구 초점, 대표 성과나 프로젝트, 소속/직함처럼 사실 확인이 되는 내용 위주로 쓰세요.
+6. 이메일 · 전화번호 · 연구실 호수 같은 연락처는 쓰지 마세요(원문에서는 [이메일] · [전화]로 지워져 있을 수 있습니다)."""
 
 
 def fetch_available_models(api_key: str) -> list[str]:
@@ -142,18 +149,44 @@ def summarize_with_fallback(
     raise last_err or RuntimeError("모든 모델 시도 실패")
 
 
+def _fair_shares(lengths: list[int], budget: int) -> list[int]:
+    """짧은 칸은 다 넣고 남는 몫을 긴 칸들이 똑같이 나눈다(물 채우기). 합이 budget 을 넘지 않는다."""
+    shares = [0] * len(lengths)
+    left, remaining = budget, len(lengths)
+    for i in sorted(range(len(lengths)), key=lambda k: lengths[k]):
+        share = left // remaining if remaining else 0
+        shares[i] = min(lengths[i], share)
+        left -= shares[i]
+        remaining -= 1
+    return shares
+
+
 def build_input_text(entry: dict) -> str:
-    parts = []
+    """요약에 보낼 원문. 예전에는 이어 붙인 뒤 앞 16,000자만 잘라, 긴 첫 화면·논문 목록이 뒤쪽 탭(연구 소개 등)을
+    통째로 밀어냈다(2026-10-07 상한을 올린 뒤 더 심해짐). 이제 칸마다 고르게 나누고(_fair_shares) 줄 끝에서 자른다."""
+    parts: list[tuple[int, str, str]] = []  # (순서, 머리, 글)
     main_text = (entry.get("text") or "").strip()
     if main_text:
-        parts.append(f"[홈페이지 첫 화면]\n{main_text}")
+        parts.append((0, "[홈페이지 첫 화면]", main_text))
     for sub_url, sub in (entry.get("subpages") or {}).items():
         sub_text = (sub.get("text") or "").strip()
         if not sub_text:
             continue
         title = sub.get("title") or sub_url
-        parts.append(f"[서브페이지: {title}]\n{sub_text}")
-    return "\n\n".join(parts)[:MAX_INPUT_CHARS]
+        is_pub = any(h in f"{title} {sub_url}".lower() for h in PUBLICATION_HINTS)
+        parts.append((2 if is_pub else 1, f"[서브페이지: {title}]", sub_text))
+    parts.sort(key=lambda p: p[0])  # 같은 순서끼리는 크롤링 순서 그대로(안정 정렬)
+    overhead = sum(len(h) + 3 for _, h, _ in parts)
+    shares = _fair_shares([len(x) for _, _, x in parts], max(0, MAX_INPUT_CHARS - overhead))
+    out = []
+    for (_, head, text), share in zip(parts, shares):
+        if share <= 0:
+            continue
+        if len(text) > share:
+            cut = text.rfind("\n", 0, share)
+            text = text[: cut if cut >= share * 0.8 else share].rstrip()
+        out.append(f"{head}\n{text}")
+    return "\n\n".join(out)
 
 
 def content_hash(text: str) -> str:
@@ -166,8 +199,10 @@ def main() -> None:
     ap.add_argument("--force", action="store_true", help="원문이 안 바뀌었어도 전부 다시 요약")
     args = ap.parse_args()
 
+    use = llm_client.provider()  # postech(로컬 .env 에 POSTECH 키) 또는 gemini(GitHub Actions)
+    postech = llm_client.PostechClient() if use == "postech" else None
     api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
+    if use == "gemini" and not api_key:
         raise SystemExit(
             "GEMINI_API_KEY 환경변수가 없습니다. "
             "https://aistudio.google.com/app/apikey 에서 발급받아 설정하세요."
@@ -183,8 +218,12 @@ def main() -> None:
         if url:
             name_by_url[url] = r
 
-    models = fetch_available_models(api_key)
-    print(f"사용 가능한 모델(우선순위 상위): {models[:5]}")
+    if postech:
+        models = []
+        print(f"요약: POSTECH AI API ({postech.label})")
+    else:
+        models = fetch_available_models(api_key)
+        print(f"사용 가능한 모델(우선순위 상위): {models[:5]}")
 
     targets = [(url, entry) for url, entry in crawl.items() if entry.get("text") and not entry.get("skipped")]
     if args.limit:
@@ -207,15 +246,25 @@ def main() -> None:
         system_instruction = SYSTEM_INSTRUCTION_TEMPLATE.format(name=name)
         user_text = f"다음은 {name} 교수 개인 홈페이지에서 크롤링한 원문입니다.\n\n{input_text}"
         try:
-            summary, used_model = summarize_with_fallback(api_key, models, system_instruction, user_text)
+            if postech:
+                # 원문이 많으면 Claude 가 길게 써 1,000토큰에서 잘린 적이 있다(2026-10-07, 28명) — 길이 규칙 + 넉넉한 상한
+                summary, used_model = postech.summarize(system_instruction, user_text, max_tokens=1500)
+            else:
+                summary, used_model = summarize_with_fallback(api_key, models, system_instruction, user_text)
             entry["summary"] = summary
             entry["summary_source_hash"] = h
             entry["summary_model"] = used_model
             entry["summary_generated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
             summarized += 1
+        except llm_client.CreditLimitReached as e:  # 키 한도 — 남은 교원은 다음에(원문 해시가 같으면 이어서 건너뜀)
+            print(f"  멈춤: {e}")
+            failed += 1
+            break
         except Exception as e:  # noqa: BLE001 — 개별 실패는 기록하고 계속 진행
             print(f"  실패: {e}")
             failed += 1
+        if postech and postech.status():
+            print(f"   {postech.status().strip(' ·')}")
         CRAWL_FILE.write_text(json.dumps(crawl, ensure_ascii=False, indent=2), encoding="utf-8")
         time.sleep(0.5)
 

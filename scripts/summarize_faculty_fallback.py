@@ -23,6 +23,8 @@ summarize_homepages.py와 마찬가지로 이 저장소의 index.html이 쓰는 
 
 환경변수:
     GEMINI_API_KEY   Google AI Studio에서 발급한 API 키
+    SUMMARY_PROVIDER · POSTECH_API_KEY · POSTECH_API_BASE
+                      (2026-10-07) 로컬에서는 POSTECH AI API 로도 요약한다 — scripts/llm_client.py
                       (https://aistudio.google.com/app/apikey)
 
 사용법:
@@ -49,6 +51,7 @@ except ImportError:
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_wiki  # noqa: E402 — parse_text_public/get_homepage_summary 등 재사용 (원본 무결성: 파싱 로직 중복 방지)
+import llm_client  # noqa: E402 — POSTECH AI API 호출(2026-10-07)
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCES_DIR = ROOT / "sources"
@@ -188,8 +191,10 @@ def main() -> None:
     ap.add_argument("--force", action="store_true", help="원본이 안 바뀌었어도 전부 다시 요약")
     args = ap.parse_args()
 
+    use = llm_client.provider()  # postech(로컬 .env 에 POSTECH 키) 또는 gemini(GitHub Actions)
+    postech = llm_client.PostechClient() if use == "postech" else None
     api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
+    if use == "gemini" and not api_key:
         raise SystemExit(
             "GEMINI_API_KEY 환경변수가 없습니다. "
             "https://aistudio.google.com/app/apikey 에서 발급받아 설정하세요."
@@ -202,8 +207,12 @@ def main() -> None:
     crawl = json.loads(CRAWL_FILE.read_text(encoding="utf-8")) if CRAWL_FILE.exists() else {}
     fallback = json.loads(FALLBACK_FILE.read_text(encoding="utf-8")) if FALLBACK_FILE.exists() else {}
 
-    models = fetch_available_models(api_key)
-    print(f"사용 가능한 모델(우선순위 상위): {models[:5]}")
+    if postech:
+        models = []
+        print(f"요약: POSTECH AI API ({postech.label})")
+    else:
+        models = fetch_available_models(api_key)
+        print(f"사용 가능한 모델(우선순위 상위): {models[:5]}")
 
     targets = [r for r in records if needs_fallback(r, crawl)]
     if args.limit:
@@ -227,7 +236,10 @@ def main() -> None:
         system_instruction = SYSTEM_INSTRUCTION_TEMPLATE.format(name=name)
         user_text = f"다음은 {name} 교수의 위키 페이지에 정리된 구조화 정보입니다.\n\n{input_text}"
         try:
-            summary, used_model = summarize_with_fallback(api_key, models, system_instruction, user_text)
+            if postech:
+                summary, used_model = postech.summarize(system_instruction, user_text)
+            else:
+                summary, used_model = summarize_with_fallback(api_key, models, system_instruction, user_text)
             fallback[key] = {
                 "summary": summary,
                 "source_hash": h,
@@ -235,6 +247,10 @@ def main() -> None:
                 "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             }
             summarized += 1
+        except llm_client.CreditLimitReached as e:  # 키 한도 — 남은 교원은 다음에
+            print(f"  멈춤: {e}")
+            failed += 1
+            break
         except Exception as e:  # noqa: BLE001 — 개별 실패는 기록하고 계속 진행
             print(f"  실패: {e}")
             failed += 1

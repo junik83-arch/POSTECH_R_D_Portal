@@ -46,9 +46,11 @@ scripts/                        ← 3) 파이프라인
   build_wiki.py                    sources/*.json → wiki/faculty/*.md, index.md,
                                     researchers.json 등 (결정론적)
   crawl_homepages.py               홈페이지+서브페이지 크롤링 → sources/homepage_crawl.json
-  summarize_homepages.py           크롤링 원문을 Gemini API로 요약 → homepage_crawl.json 의 summary 필드
+  summarize_homepages.py           크롤링 원문을 LLM으로 요약 → homepage_crawl.json 의 summary 필드
   summarize_faculty_fallback.py    위 요약이 없는 교원만, 위키 자체 필드(관심분야·실적·논문 등)를
-                                    Gemini API로 요약 → faculty_fallback_summary.json
+                                    LLM으로 요약 → faculty_fallback_summary.json
+  llm_client.py                    요약 두 스크립트가 쓰는 POSTECH AI API(게이트웨이 Claude) 호출 —
+                                    로컬 .env 에 POSTECH 키가 있으면 이것, 없으면 Gemini(GitHub Actions)
 
 tools/
   doc-generator.html              사업 안내 공문 생성기 — 이 위키와 무관한 별도 도구
@@ -56,7 +58,7 @@ tools/
 .github/workflows/refresh-wiki.yml  연 2회(3월 1일·9월 1일) 위 세 스크립트를 순서대로 실행해 main에 자동 커밋
 ```
 
-`sources/homepage_crawl.json` 안의 `text`/`subpages`는 크롤링 원문 그대로지만, `summary`
+`sources/homepage_crawl.json` 안의 `text`/`subpages`는 크롤링 원문 그대로(연락처만 지움 — 아래 '홈페이지 크롤링')지만, `summary`
 필드는 그 원문을 LLM(Gemini)이 요약한 **파생 데이터**입니다 — 편의상 같은 파일에 저장하지만
 "원본 그 자체"는 아니라는 점에 유의하세요 (교원 페이지에는 "AI 생성 요약"이라고 명시해 출처를
 구분합니다). `sources/faculty_fallback_summary.json`도 마찬가지로 파생 데이터입니다 — 다만
@@ -139,6 +141,9 @@ LLM(Claude)이 직접 쓰고 유지합니다. **스크립트가 건드리지 않
 접근할 수 없습니다 (egress 차단 — WebFetch 도구도 동일하게 막힘). 따라서 크롤링은
 `scripts/crawl_homepages.py` 를 **인터넷 접근이 가능한 환경**에서 실행해
 `sources/homepage_crawl.json` 을 만든 뒤, `scripts/build_wiki.py` 로 위키에 반영합니다.
+(2026-10-07: POSTECH 교내 서버의 Claude Code 로컬 세션에서는 인터넷 · postech.ac.kr 에 접근할 수 있어 직접 돌렸다 —
+`python3 -m venv .venv && .venv/bin/pip install -r scripts/requirements.txt` 뒤 `.venv/bin/python scripts/…`.
+실행 기록 · 로그는 git 밖 `.local/` 에 둔다.)
 
 **자동 정기 갱신**: `.github/workflows/refresh-wiki.yml` 이 연 2회(3월 1일·9월 1일)
 ① 크롤러(`--force`, 전체 재크롤링) ② `summarize_homepages.py`(Gemini API로 원문 요약,
@@ -151,10 +156,27 @@ LLM(Claude)이 직접 쓰고 유지합니다. **스크립트가 건드리지 않
 수동으로 실행해도 됩니다.
 
 - **서브페이지(탭) 크롤링**: 홈페이지 첫 화면 안의 같은 사이트 내부 링크 중 연구/논문/CV
-  등 키워드로 우선순위를 매겨 교원 1명당 기본 8개까지 함께 가져옵니다. 구성원 명단·뉴스/공지
-  링크는 제외합니다 (`SUBPAGE_EXCLUDE_KEYWORDS`).
+  등 키워드로 우선순위를 매겨 교원 1명당 기본 15개까지 함께 가져옵니다. 구성원 명단·뉴스/공지
+  링크는 제외합니다 (`SUBPAGE_EXCLUDE_KEYWORDS` — 2026-10-07 졸업생 · 개인정보 처리방침 · 로그인 · 사이트맵도). 링크 글자로
+  걸러지지 않은 것은 받은 페이지 제목으로 한 번 더 거르고, 주소의 http/https · www 차이는 같은 페이지로 본다.
+- **저장 상한 (2026-10-07 상향)**: 첫 화면 20,000자 · 탭 하나 12,000자 · 탭 15개. 예전 상한(4,000자 ·
+  2,500자 · 8개)에서는 2026-08-28 크롤링의 홈페이지 256곳 중 204곳이 문장·논문 항목 중간에서 잘렸다
+  (논문·출판 탭의 75%). 이제 상한을 넘으면 줄 끝에서 자르고 `chars_total`(원래 길이) · `truncated` 를
+  남기며, 교원 페이지에 "원문 N자 중 앞 M자만 저장" 줄이 붙는다.
+- **연락처 지우기 (2026-10-07)**: 이 저장소는 공개라, 크롤러가 원문을 저장하기 전에 이메일 · 전화번호를
+  `[이메일]` · `[전화]` 로 바꾼다(연구실 홈페이지에 학생 연락처가 섞여 있다). 교원 본인 이메일은 실적 DB 에서
+  '기본 정보'에 따로 나온다. 전화는 지역번호(0 · +82)로 시작할 때만 지운다 — 논문 목록 숫자를 잘못 지우지 않게.
+- **다시 받기 실패 · 넘겨주기**: 다시 받다가 실패하면 예전 글을 지우지 않고 `error` · `last_attempt_at` 만 더한다
+  (교원 페이지에 "다시 받기에 실패해 … 내용을 보여 줍니다"). AI 요약 칸도 크롤링 때 지우지 않는다 — 요약 스크립트가
+  원문 해시를 비교해 바뀐 교원만 다시 요약한다. 글자 없는 첫 화면이 meta refresh · `location.replace` 로
+  다른 주소로 넘기면 한 번 따라간다. 중간에 멈춘 전체 갱신은 `--force --refetch-before <시작 시각>` 으로 이어 돈다.
 - **학과/그룹 공통 포털 제외**: 여러 교원이 정확히 같은 URL을 홈페이지로 등록한 경우
   (`PORTAL_SHARE_THRESHOLD = 2` 이상 공유) 개인 페이지가 아니라고 보고 크롤링하지 않습니다.
+- **AI 요약 — 제공자 (2026-10-07)**: 로컬 실행은 POSTECH AI API(게이트웨이 `claude-opus-5`, `scripts/llm_client.py`)를
+  쓴다. 키는 저장소 루트 `.env`(git 제외)에 `SUMMARY_PROVIDER=postech` · `POSTECH_API_BASE` · `POSTECH_API_KEY` ·
+  `POSTECH_CREDIT_STOP`(이번 주 사용량이 여기 닿으면 멈춤). 게이트웨이는 `temperature` 를 받지 않는다(400).
+  GitHub Actions 정기 갱신은 POSTECH 키가 없으니 예전처럼 Gemini 다. 요약에 보내는 원문은 16,000자를 칸(첫 화면 ·
+  탭)마다 고르게 나누고 논문·출판 탭을 마지막에 둔다 — 예전에는 앞 16,000자만 잘라 긴 탭이 연구 소개를 밀어냈다.
 - **AI 요약 (Gemini)**: `scripts/summarize_homepages.py` 가 크롤링 원문(첫 화면 + 서브페이지)을
   교원 1인당 3~5문장으로 요약해 `homepage_crawl.json`의 `summary` 필드에 저장합니다.
   `index.html`(RFP 공문 생성기)과 동일하게 Gemini API를 REST로 직접 호출합니다(동적 모델
