@@ -1082,7 +1082,9 @@
   });
 
   // ── 데이터 로드 ──
-  fetch(DATA_URL).then(function(res){
+  // cache: "no-cache" — GitHub Pages 는 max-age=600(10분) 으로 내보내, 위키를 갱신한 직후에도 브라우저가 옛
+  // researchers.json 을 계속 쓸 수 있었다(2026-10-07). 매번 서버에 바뀌었는지 묻고(ETag), 그대로면 304 로 캐시를 쓴다.
+  fetch(DATA_URL, { cache: "no-cache" }).then(function(res){
     if(!res.ok) throw new Error("HTTP " + res.status);
     return res.json();
   }).then(function(data){
