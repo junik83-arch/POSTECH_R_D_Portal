@@ -4,7 +4,7 @@ name: Valentin Buciumas
 department: 수학과
 email: buciumas@postech.ac.kr
 homepage: https://buciumas.github.io/
-updated: 2026-10-07
+updated: 2026-10-08
 ---
 
 # Valentin Buciumas (수학과)
@@ -977,4 +977,4 @@ It is based on ongoing and in-preparation works joint with M.Finkelberg and R. T
 
 ## 출처
 - POSTECH R&D 실적 데이터베이스 (개인번호 101792)
-- 최종 갱신: 2026-10-07
+- 최종 갱신: 2026-10-08

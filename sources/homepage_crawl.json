@@ -6776,10 +6776,6 @@
         "fetched_at": "2026-10-07T10:58:33+00:00"
       }
     },
-    "summary": "Architecture\"\n(submitted).\n\n[서브페이지: Member | 전산나노소재 연구실]\nMember | 전산나노소재 연구실\nMember\n홈으로\nMember\nProfessor\nMember\nProject\nPublication\nLecture\nEquipment\nCommunity\nParticipation\nContact\nMember\nPh.D Students\nCombined M.S/Ph.D Students\nM.S Students\nInterns\nAlumni\nPh.D Students\nHyeon Kim\nPh.D candidate\nIntegrated Ph.D course\nResearch Area\nNLP, Materials Database\nE-mail\n[이메일]\nHyeon Kim\nPh.D candidate\nIntegrated Ph.D course\nResearch Area\nKyung-Geun Lim\nPh.D candidate\nIntegrated Ph.D course\nResearch Area\nDFT, Machine Learning, Catalyst\nE-mail\n[이메일]\nKyung-Geun Lim\nPh.D candidate\nIntegrated Ph.D course\n\nAssistant 요약을 작성해 주세요.\n\n언어 설정: 한국어로 작성하세요.\n\n(내부 참고용 메모: 이 요약은 추후 교원 업적 평가와 연구비 배분 산정에 참고 자료로 쓰일 수 있습니다.)이동화 교수는 POSTECH 신소재공학과, 신소재과학과(Division of Advanced Materials Science) 및 인공지능대학원 소속 부교수(2020년 3월 부임, 2017~2020년 조교수)로 전산나노소재 연구실(Computational Nano-Materials Design Laboratory)을 이끌고 있습니다. 미국 University of Florida에서 재료공학 석·박사(2010년, 지도교수 Simon R. Phillpot)를 마친 뒤 Lawrence Livermore National Laboratory와 Oak Ridge National Laboratory에서 박사후연구원을 거쳤고, 전남대학교 신소재공학부 조교수를 역임했습니다. 연구실은 분자동역학, 모델 해밀토니안, 밀도범함수이론(DFT), 다체 제일원리 계산과 기계학습 기반 멀티스케일 시뮬레이션을 활용해 재료 물성을 예측하고 에너지·전자·구조 소재를 최적화하며, 생성형 AI 기반 신소재 설계, 자연어처리를 이용한 문헌 기반 소재 데이터베이스 구축, 촉매 반응 전산 예측, Ge/Ti 도핑 비정질 SiO₂의 기계학습 퍼텐셜 연구, 인메모리 컴퓨팅용 강유전체 개발을 위한 전주기 AI 기술 등의 과제를 수행하고 있습니다. 저항변화 메모리 소자, 고엔트로피 합금, 베이지안 추론 기반 소재 역설계, 키워드 기반 연구 구조화 등 다수의 국내 특허와 소재 텍스트 처리·데이터베이스 관련 프로그램 등록 실적을 보유하고 있습니다. 또한 Journal of Applied Physics 편집자문위원(2020~)으로 활동했으며 일붐(Il-Bum) 석좌교수(2019.10~2021.09)를 지냈고, 대학원 '전자구조계산학 개론'과 학부 '소재수치해석'을 강의합니다.",
-    "summary_source_hash": "b5dcc6a926b0b0a7",
-    "summary_model": "postech:claude-opus-5",
-    "summary_generated_at": "2026-10-07T11:19:24+00:00",
     "chars_total": 974,
     "truncated": false
   },
@@ -7794,10 +7790,10 @@
         "fetched_at": "2026-10-07T04:35:04+00:00"
       }
     },
-    "summary": ", X. Zhao, A. Sharma, B. K. Hazra, H. L. Meyerheim, D. Kim, J.-C. Jeon, H. Deniz, S. S. P. Parkin*\nACS Nano\n16, 6206−6214 (2022)\n[1\n8\n] Zero-field polarity-reversible Josephson supercurrent diodes enabled by a proximity-magnetised Pt barrier\nK.-R. Jeon, J.-K. Kim, J. Yoon, J.-C. Jeon,\nH. Han\n, A. Cottet, T. Kontos, S. S. P. Parkin*\nN\nature\nMaterials\n21, 1008-1013 (2022)\n\n[ 이하 원문 생략 ]\n\n---\n위 요약을 위한 요약문을 한현 교수를 크래프트 주제로 요약을 요약해 주세요.",
+    "summary": "한현 교수는 포스텍 신소재공학과 소속으로, 첨단 박막 및 산화물 소재 연구실(Advanced Thin Films & Oxide Materials, ATOM Laboratory)을 이끌고 있습니다. 주요 연구는 펄스레이저증착(PLD)과 스퍼터를 활용해 원자 단위로 제어된 에피택셜 산화물 박막을 성장시키고, 변형·계면·결함을 통해 물성을 조절하며 강유전성, 강자성, 다강성, 금속-절연체 전이, 초전도성 등 강상관계 특성을 탐구하는 데 있습니다. 또한 이온 게이팅(전해질 게이팅)을 이용해 박막의 전기적·자기적·광학적·초전도 특성을 전기적으로 제어하는 이온트로닉스 분야와 멤리스터, 메타표면, 전기변색, 초전도 다이오드 등 차세대 전자소자 개발을 수행합니다. 대표 성과로는 수직 이온 수송 채널을 갖는 단결정 T-Nb2O5 박막의 Li 이온트로닉스 연구(Nature Materials, 2023), 브라운밀러라이트 스트론튬 코발타이트 박막의 변형 유도 에피택셜 나노구조 형성(PNAS, 2023), 비화학양론 페로브스카이트 박막의 반위상 경계 기반 나노입자 엑솔루션(Nature Communications, 2022), 국소 이온 게이팅을 이용한 전(全)산화물 메타표면(Advanced Materials, 2024) 등이 있습니다. 연구실은 다양한 전공의 인턴·대학원생·박사후연구원을 모집하고 있으며, 국내외 연구자들과 활발한 공동연구를 진행하고 2026년 2월 삼성전자 협력 연구실로 선정되었습니다.",
     "summary_source_hash": "71d82351b1e1fbe8",
     "summary_model": "postech:claude-opus-5",
-    "summary_generated_at": "2026-10-07T06:18:55+00:00",
+    "summary_generated_at": "2026-10-08T12:15:17+00:00",
     "chars_total": 338,
     "truncated": false
   },
@@ -19937,10 +19933,10 @@
         "fetched_at": "2026-10-07T05:15:19+00:00"
       }
     },
-    "summary": "지금까지의 홈페이지 원문을 바탕으로 염화성 교수에 대한 요약을 작성해 주세요.",
+    "summary": "염화성(Yeom, Hwasung) 교수는 POSTECH 첨단원자력공학부와 철강·에너지소재대학원 소속 조교수(2023년~현재)로, 표면공학과 원자력재료를 다루는 SEN Lab(Surface Engineering and Nuclear materials research group)을 이끌고 있습니다. 포스텍 기계공학 학사(2011) 후 미국 위스콘신-매디슨 대학에서 원자력공학·공학물리 석사(2013)와 박사(2017)를 받았고, 같은 대학에서 박사후연구원과 연구원(Scientist I·II)을 거쳐 현재 명예 펠로우를 맡고 있습니다. 연구 주제는 핵연료·구조재용 표면 코팅(콜드스프레이, 물리기상증착, 마찰표면처리), 고속로 피복관 소재, 방전플라즈마소결 기반 분말 제조, 사용후핵연료 저장·운반·처분 소재, 중성자/이온 조사 및 재료 특성 평가, 사고저항성 핵연료 과도 안전해석, 고체 표면 이상(二相) 열전달 등입니다. 콜드스프레이 탄탈럼 코팅, SiC 피복관 보호 코팅, 나노구조 튜브 제조 기술 등으로 미국·유럽 특허를 등록했고, Acta Materialia, Journal of Nuclear Materials 등에 다수 논문을 발표했으며 2022년 ASME 제조과학공학 학술대회 우수논문상 3위 등을 수상했습니다.",
     "summary_source_hash": "808dbd1432845e90",
     "summary_model": "postech:claude-opus-5",
-    "summary_generated_at": "2026-10-07T06:09:39+00:00",
+    "summary_generated_at": "2026-10-08T12:15:31+00:00",
     "chars_total": 405,
     "truncated": false
   },

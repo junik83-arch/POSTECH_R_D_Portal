@@ -25,6 +25,7 @@ Google Gemini API로 교원 1인당 3~5문장으로 요약해 각 엔트리에 "
     python3 scripts/summarize_homepages.py            # 요약 없거나 원문이 바뀐 것만
     python3 scripts/summarize_homepages.py --force     # 전부 다시 요약
     python3 scripts/summarize_homepages.py --limit 5   # 테스트용 (앞 5명만)
+    python3 scripts/summarize_homepages.py --only 100844,한현   # 이 교원만 다시 요약(개인번호 · 성명, 원문이 그대로여도)
 """
 from __future__ import annotations
 
@@ -32,6 +33,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -189,6 +191,24 @@ def build_input_text(entry: dict) -> str:
     return "\n\n".join(out)
 
 
+# 2026-10-08: 10/7 요약 중 3건(이동화 · 한현 · 염화성)이 요약 대신 지시문을 남겼다 — '…요약을 작성해 주세요' ·
+# '언어 설정: …' · '(내부 참고용 메모: … 연구비 배분 산정에 참고 …)'(원문에는 없는 글 — 모델이 지어냄) · 원문 덩어리 + '[ 이하 원문 생략 ]'.
+# 이런 출력은 요약이 아니고, 이 요약을 읽는 다른 AI(플랫폼 연구자 검색 v3)에게 지시처럼 읽힐 수 있다 → 저장하지 않고 실패로 남긴다.
+BROKEN_MARKS = ("주세요", "작성하세요", "내부 참고용 메모", "언어 설정:", "이하 원문 생략", "[서브페이지:", "[홈페이지 첫 화면]")
+
+
+def looks_broken(summary: str) -> str:
+    """요약이 지시문 · 원문 덩어리로 보이면 걸린 표지를, 아니면 '' 를 돌려준다."""
+    return next((m for m in BROKEN_MARKS if m in summary), "")
+
+
+def safe_for_chat(text: str) -> str:
+    """보내는 원문에서 줄 맨 앞의 'Assistant' · 'Human'(예: 'Assistant Professor, …' — CV · 구성원 탭) 앞에 '· '를 붙인다.
+    2026-10-08: 이동화 교수 원문에 이런 줄이 있어 게이트웨이가 대화 차례 표시로 읽고 요약 대신 원문을 이어 쓴 것으로 보인다
+    (두 번 되풀이). 해시(content_hash)는 원래 원문으로 계산하므로 이 처리로 다른 교원이 다시 요약되지는 않는다."""
+    return re.sub(r"(?m)^(\s*)(Assistant|Human)\b", r"\1· \2", text)
+
+
 def content_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
@@ -199,7 +219,9 @@ def main() -> None:
     ap.add_argument("--force", action="store_true", help="원문이 안 바뀌었어도 전부 다시 요약")
     ap.add_argument("--retry-not-found", action="store_true",
                     help="'본인 정보를 찾지 못함'으로 답한 교원은 원문이 그대로여도 다시 요약(지시문을 고친 뒤)")
+    ap.add_argument("--only", default="", help="이 교원만 다시 요약 — 개인번호나 성명을 쉼표로(원문이 그대로여도)")
     args = ap.parse_args()
+    only = {x.strip() for x in args.only.split(",") if x.strip()}
 
     use = llm_client.provider()  # postech(로컬 .env 에 POSTECH 키) 또는 gemini(GitHub Actions)
     postech = llm_client.PostechClient() if use == "postech" else None
@@ -228,6 +250,11 @@ def main() -> None:
         print(f"사용 가능한 모델(우선순위 상위): {models[:5]}")
 
     targets = [(url, entry) for url, entry in crawl.items() if entry.get("text") and not entry.get("skipped")]
+    if only:
+        targets = [(url, entry) for url, entry in targets
+                   if name_by_url.get(url) and ({name_by_url[url].get("개인번호", ""), name_by_url[url].get("성명", "")} & only)]
+        if len(targets) != len(only):
+            print(f"  알림: --only {len(only)}개 중 {len(targets)}명만 찾음(성명 · 개인번호 · 홈페이지 주소를 확인하세요)")
     if args.limit:
         targets = targets[: args.limit]
 
@@ -241,7 +268,7 @@ def main() -> None:
             continue
         h = content_hash(input_text)
         not_found = (entry.get("summary") or "").strip() == build_wiki.HOMEPAGE_SUMMARY_NOT_FOUND
-        if (not args.force and entry.get("summary") and entry.get("summary_source_hash") == h
+        if (not args.force and not only and entry.get("summary") and entry.get("summary_source_hash") == h
                 and not (args.retry_not_found and not_found)):
             skipped += 1
             continue
@@ -253,13 +280,16 @@ def main() -> None:
         dept = (rec.get("학과") or "").strip() if rec else ""
         user_text = (f"다음은 {name} 교수{f'({dept})' if dept else ''}의 홈페이지에서 크롤링한 원문입니다. 이 주소는 POSTECH 실적 "
                      f"데이터베이스에 {name} 교수 본인의 홈페이지로 등록되어 있습니다. 영문 사이트에서는 이름이 로마자로, 연구실 "
-                     f"사이트에서는 연구실 책임 교수(PI · Professor)로 나올 수 있습니다.\n\n{input_text}")
+                     f"사이트에서는 연구실 책임 교수(PI · Professor)로 나올 수 있습니다.\n\n{safe_for_chat(input_text)}")
         try:
             if postech:
                 # 원문이 많으면 Claude 가 길게 써 1,000토큰에서 잘린 적이 있다(2026-10-07, 28명) — 길이 규칙 + 넉넉한 상한
                 summary, used_model = postech.summarize(system_instruction, user_text, max_tokens=1500)
             else:
                 summary, used_model = summarize_with_fallback(api_key, models, system_instruction, user_text)
+            broken = looks_broken(summary)
+            if broken:   # 지시문 · 원문 덩어리 — 저장하지 않는다(위 BROKEN_MARKS)
+                raise RuntimeError(f"요약이 아니라 지시문 · 원문으로 보여 저장하지 않음('{broken}'): {summary[:80]}…")
             entry["summary"] = summary
             entry["summary_source_hash"] = h
             entry["summary_model"] = used_model
